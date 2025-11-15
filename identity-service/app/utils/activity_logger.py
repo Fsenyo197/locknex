@@ -1,17 +1,18 @@
+from typing import Optional
 from fastapi import Request
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.activity_log_model import ActivityLog
 from app.models.user_model import User
 from app.services.restriction_service import RestrictionService
 from sqlalchemy.exc import SQLAlchemyError
 
 
-def log_activity(
-    db: Session,
-    target_user: User = None,
-    activity_type: str = None,
-    request: Request = None,
-    current_user: User = None,
+async def log_activity(
+    db: AsyncSession,
+    target_user: Optional[User] = None,
+    activity_type: Optional[str] = None,
+    request: Optional[Request] = None,
+    current_user: Optional[User] = None,
     **kwargs,
 ) -> ActivityLog:
     """
@@ -21,7 +22,7 @@ def log_activity(
 
     # Enforce restrictions (only if both users provided)
     if current_user and target_user:
-        RestrictionService.enforce(
+        await RestrictionService.enforce(
             current_user.staff_profile,
             target_user.staff_profile,
             action="view_logs",
@@ -45,9 +46,9 @@ def log_activity(
 
     try:
         db.add(log)
-        db.commit()
-        db.refresh(log)
+        await db.commit()       # ✅ async commit
+        await db.refresh(log)   # ✅ async refresh
         return log
     except SQLAlchemyError as e:
-        db.rollback()
+        await db.rollback()     # ✅ async rollback
         raise e

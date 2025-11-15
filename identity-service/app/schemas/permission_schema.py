@@ -1,6 +1,7 @@
-from pydantic import BaseModel
+from __future__ import annotations
 from uuid import UUID
 from datetime import datetime
+from pydantic import BaseModel, ConfigDict
 
 
 class PermissionBase(BaseModel):
@@ -16,5 +17,4 @@ class PermissionResponse(PermissionBase):
     date_created: datetime
     date_updated: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)

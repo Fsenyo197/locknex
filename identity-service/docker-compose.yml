@@ -5,13 +5,21 @@ services:
     depends_on:
       - identity-db
     environment:
-      DATABASE_URL: postgres+psycopg2://identity_user:identity_pass@identity-db:5432/identity_db
-      JWT_SECRET_KEY: 'supersecret'
-      JWT_ALGORITHM: 'HS256'
+      DATABASE_URL: postgresql+asyncpg://identity_user:identity_pass@identity-db:5432/identity_db
+      JWT_SECRET_KEY: supersecret
+      JWT_ALGORITHM: HS256
       JWT_ACCESS_TOKEN_EXPIRE_MINUTES: 30
+      PYTHONUNBUFFERED: 1
+      WATCHFILES_FORCE_POLLING: true
     ports:
-      - '8002:8000'
-    command: sh -c "pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+      - "8002:8000"
+    volumes:
+      - ./app:/app/app
+      - ./migrations:/app/migrations
+      - ./tests:/app/tests
+      - ./requirements.txt:/app/requirements.txt
+    command: >
+      uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
   identity-db:
     image: postgres:15
@@ -20,6 +28,8 @@ services:
       POSTGRES_USER: identity_user
       POSTGRES_PASSWORD: identity_pass
       POSTGRES_DB: identity_db
+    ports:
+      - "5433:5432"
     volumes:
       - identity_db_data:/var/lib/postgresql/data
 

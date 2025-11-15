@@ -1,13 +1,14 @@
 from fastapi import HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from typing import cast
 from app.models.staff_model import Staff, StaffRole, Department
-from app.models.user_model import User
-from sqlalchemy.orm import Session
 
 
 class RestrictionService:
     # ---------------- CORE RESTRICTION ---------------- #
     @staticmethod
-    def enforce(actor: Staff, target: Staff, action: str):
+    async def enforce(actor: "Staff", target: "Staff", action: str):
         """
         Core restriction enforcement.
         Decides what staff can do to another staff based on their roles.
@@ -15,47 +16,47 @@ class RestrictionService:
         """
 
         # Superuser restrictions
-        if target.role == StaffRole.SUPERUSER:
-            RestrictionService._enforce_superuser_rules(actor, target, action)
+        if cast(StaffRole, getattr(target, "role")) == StaffRole.SUPERUSER:
+            await RestrictionService._enforce_superuser_rules(actor, target, action)
 
         # Admin restrictions
-        elif target.role == StaffRole.ADMIN:
-            RestrictionService._enforce_admin_rules(actor, target, action)
+        elif cast(StaffRole, getattr(target, "role")) == StaffRole.ADMIN:
+            await RestrictionService._enforce_admin_rules(actor, target, action)
 
-        # Future roles (support, compliance, etc.) can be added here
-        # e.g., elif target.role == StaffRole.MANAGER: RestrictionService._enforce_manager_rules(...)
+        # (Optional) Add more role-based restrictions here
+        # elif cast(StaffRole, getattr(target, "role")) == StaffRole.MANAGER:
+        #     await RestrictionService._enforce_manager_rules(...)
 
     # ---------------- SUPERUSER RULES ---------------- #
     @staticmethod
-    def _enforce_superuser_rules(actor: Staff, target: Staff, action: str):
+    async def _enforce_superuser_rules(actor: "Staff", target: "Staff", action: str):
         """
         Superuser rules:
         - Only the superuser can view/edit/delete their own record.
         - No one can change superuser `role` or `department`.
         """
-        if actor.id != target.id:
+        if cast(int, getattr(actor, "id")) != cast(int, getattr(target, "id")):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You cannot perform actions on another superuser."
             )
 
-        if action in ["edit"]:
-            # Block editing restricted fields
+        if action == "edit":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="The fields 'role' and 'department' for superuser cannot be edited."
+                detail="Superuser's 'role' and 'department' cannot be edited."
             )
 
     # ---------------- ADMIN RULES ---------------- #
     @staticmethod
-    def _enforce_admin_rules(actor: Staff, target: Staff, action: str):
+    async def _enforce_admin_rules(actor: "Staff", target: "Staff", action: str):
         """
         Admin rules:
         - Superuser can view/edit/delete/create Admins.
         - Other staff roles cannot manage Admins.
         """
-        if actor.role == StaffRole.SUPERUSER:
-            return  # full rights on Admins
+        if cast(StaffRole, getattr(actor, "role")) == StaffRole.SUPERUSER:
+            return  # Superuser can manage admins
 
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -64,21 +65,25 @@ class RestrictionService:
 
     # ---------------- CREATION RESTRICTIONS ---------------- #
     @staticmethod
-    def ensure_single_superuser(db: Session, role: StaffRole, department: Department):
+    async def ensure_single_superuser(db: AsyncSession, role: StaffRole, department: Department):
         """
         Prevent creation of multiple superusers.
         Both role=superuser and department=superuser must remain unique.
         """
+        # Check existing superuser role
         if role == StaffRole.SUPERUSER:
-            existing = db.query(Staff).filter(Staff.role == StaffRole.SUPERUSER).first()
+            result = await db.execute(select(Staff).filter(Staff.role == StaffRole.SUPERUSER))
+            existing = result.scalars().first()
             if existing:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="A superuser already exists."
                 )
 
+        # Check existing superuser department
         if department == Department.SUPERUSER:
-            existing = db.query(Staff).filter(Staff.department == Department.SUPERUSER).first()
+            result = await db.execute(select(Staff).filter(Staff.department == Department.SUPERUSER))
+            existing = result.scalars().first()
             if existing:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,

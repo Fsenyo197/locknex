@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from datetime import date, datetime
 from uuid import UUID
@@ -12,20 +12,20 @@ class KYCStatus(str, Enum):
 
 
 class KYCVerificationBase(BaseModel):
-    full_name: Optional[str]
-    date_of_birth: Optional[date]
-    nationality: Optional[str]
-    address_line1: Optional[str]
-    address_line2: Optional[str]
-    city: Optional[str]
-    state: Optional[str]
-    postal_code: Optional[str]
-    country: Optional[str]
-    document_type: Optional[str]
-    document_number: Optional[str]
-    document_image_url: Optional[str]
-    selfie_image_url: Optional[str]
-    kyc_notes: Optional[str]
+    full_name: Optional[str] = None
+    date_of_birth: Optional[date] = None
+    nationality: Optional[str] = None
+    address_line1: Optional[str] = None
+    address_line2: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    postal_code: Optional[str] = None
+    country: Optional[str] = None
+    document_type: Optional[str] = None
+    document_number: Optional[str] = None
+    document_image_url: Optional[str] = None
+    selfie_image_url: Optional[str] = None
+    kyc_notes: Optional[str] = None
     status: Optional[KYCStatus] = KYCStatus.PENDING
 
 
@@ -42,5 +42,4 @@ class KYCVerificationResponse(KYCVerificationBase):
     date_created: datetime
     date_updated: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)

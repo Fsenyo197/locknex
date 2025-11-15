@@ -1,79 +1,94 @@
-from fastapi import APIRouter, Depends, Request
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, Request, status
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
+from uuid import UUID
+from app.db import get_db
 from app.schemas.user_schema import UserCreate, UserUpdate, UserResponse
 from app.services.user_service import UserService
-from app.db import get_db
 from app.utils.current_user import get_current_user
 
 user_router = APIRouter(prefix="/users", tags=["Users"])
 
 
 # -------------------------
-# Create user
+# Create User
 # -------------------------
-@user_router.post("/", response_model=UserResponse, status_code=201)
-def create_user(
+@user_router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+async def create_user(
     user_in: UserCreate,
-    db: Session = Depends(get_db),
-    request: Request = None,
+    db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
+    request = Request,
 ):
-    return UserService.create_user(db, user_in, current_user=current_user, request=request)
+    return await UserService.create_user(
+        db, user_in, current_user=current_user, request=request
+    )
 
 
 # -------------------------
-# Get user by ID
+# Get Single User
 # -------------------------
 @user_router.get("/{user_id}", response_model=UserResponse)
-def get_user(
-    user_id: int,
-    db: Session = Depends(get_db),
-    request: Request = None,
+async def get_user(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
+    request = Request,
 ):
-    return UserService.get_user_by_id(db, user_id, current_user=current_user, request=request)
+    return await UserService.get_user_by_id(
+        db, user_id, current_user=current_user, request=request
+    )
 
 
 # -------------------------
-# List users
+# List Users
 # -------------------------
 @user_router.get("/", response_model=List[UserResponse])
-def list_users(
+async def list_users(
     skip: int = 0,
     limit: int = 100,
-    db: Session = Depends(get_db),
-    request: Request = None,
+    db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
+    request = Request,
 ):
-    return UserService.list_users(db, current_user=current_user, skip=skip, limit=limit, request=request)
+    return await UserService.list_users(
+        db, current_user=current_user, skip=skip, limit=limit, request=request
+    )
 
 
 # -------------------------
-# Update user
+# Update User
 # -------------------------
 @user_router.put("/{user_id}", response_model=UserResponse)
-def update_user(
-    user_id: int,
+async def update_user(
+    user_id: UUID,
     user_in: UserUpdate,
-    db: Session = Depends(get_db),
-    request: Request = None,
+    db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
+    request = Request,
 ):
-    user = UserService.get_user_by_id(db, user_id, current_user=current_user, request=request)
-    return UserService.update_user(db, user, user_in, current_user=current_user, request=request)
+    user = await UserService.get_user_by_id(
+        db, user_id, current_user=current_user, request=request
+    )
+    return await UserService.update_user(
+        db, user, user_in, current_user=current_user, request=request
+    )
 
 
 # -------------------------
-# Delete user
+# Delete User
 # -------------------------
-@user_router.delete("/{user_id}", status_code=204)
-def delete_user(
-    user_id: int,
-    db: Session = Depends(get_db),
-    request: Request = None,
+@user_router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
+    request = Request,
 ):
-    user = UserService.get_user_by_id(db, user_id, current_user=current_user, request=request)
-    UserService.delete_user(db, user, current_user=current_user, request=request)
-    return {"detail": "User deleted successfully"}
+    user = await UserService.get_user_by_id(
+        db, user_id, current_user=current_user, request=request
+    )
+    await UserService.delete_user(
+        db, user, current_user=current_user, request=request
+    )
+    return None

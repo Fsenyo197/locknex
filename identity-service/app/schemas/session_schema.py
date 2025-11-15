@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from uuid import UUID
 from datetime import datetime
 from typing import Optional
@@ -18,8 +18,8 @@ class SessionCreate(SessionBase):
 
 
 class SessionUpdate(BaseModel):
-    is_valid: Optional[bool]
-    expires_at: Optional[datetime]
+    is_valid: Optional[bool] = None
+    expires_at: Optional[datetime] = None
 
 
 class SessionResponse(SessionBase):
@@ -27,5 +27,4 @@ class SessionResponse(SessionBase):
     date_created: datetime
     date_updated: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)

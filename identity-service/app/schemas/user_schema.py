@@ -1,9 +1,10 @@
-from pydantic import BaseModel, EmailStr, constr
+from pydantic import StringConstraints, BaseModel, EmailStr, ConfigDict
 from typing import Optional, Annotated
 from uuid import UUID
 from datetime import datetime, date
 from enum import Enum
 from app.schemas.kyc_schema import KYCVerificationResponse, KYCVerificationCreate, KYCVerificationUpdate
+from typing_extensions import Annotated
 
 
 class UserStatus(str, Enum):
@@ -14,11 +15,17 @@ class UserStatus(str, Enum):
     KYC_REJECTED = "kyc_rejected"
 
 
+class CurrentUserResponse(BaseModel):
+    id: UUID
+    username: str
+    email: str
+
+
 # -----------------------------
 # User Schemas
 # -----------------------------
 class UserBase(BaseModel):
-    username: Annotated[str, constr(min_length=3, max_length=50)]
+    username: Annotated[str, Annotated[str, StringConstraints(min_length=3, max_length=50)]]
     email: EmailStr
     phone_number: str
     is_verified: bool = False
@@ -27,28 +34,26 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    password: Annotated[str, constr(min_length=8)]
+    password: Annotated[str, Annotated[str, StringConstraints(min_length=8)]]
     twofa_secret: Optional[str] = None
-    kyc: Optional[KYCVerificationCreate]
+    kyc: Optional[KYCVerificationCreate] = None
 
 
 class UserUpdate(BaseModel):
-    username: Optional[Annotated[str, constr(min_length=3, max_length=50)]]
-    email: Optional[EmailStr]
-    
-    phone_number: Optional[str]
-    password: Optional[Annotated[str, constr(min_length=8)]]
-    is_verified: Optional[bool]
-    status: Optional[UserStatus]
-    twofa_secret: Optional[str]
-    kyc: Optional[KYCVerificationUpdate]
+    username: Optional[Annotated[str, Annotated[str, StringConstraints(min_length=3, max_length=50)]]] = None
+    email: Optional[EmailStr] = None
+    phone_number: Optional[str] = None
+    password: Optional[Annotated[str, Annotated[str, StringConstraints(min_length=8)]]] = None
+    is_verified: Optional[bool] = None
+    status: Optional[UserStatus] = None
+    twofa_secret: Optional[str] = None
+    kyc: Optional[KYCVerificationUpdate] = None
 
 
 class UserResponse(UserBase):
     id: UUID
     date_created: datetime
     date_updated: datetime
-    latest_kyc: Optional[KYCVerificationResponse]
+    latest_kyc: Optional[KYCVerificationResponse] = None
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)

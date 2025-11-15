@@ -11,8 +11,8 @@ class Permission(BaseModel):
     staffs = relationship("Staff", secondary="staff_permissions", back_populates="permissions")
 
 
-UserPermissions = Table(
-    "user_permissions",
+StaffPermissions = Table(
+    "staff_permissions",
     BaseModel.metadata,
     Column("staff_id", ForeignKey("staffs.id", ondelete="CASCADE"), primary_key=True, index=True),
     Column("permission_id", ForeignKey("permissions.id", ondelete="CASCADE"), primary_key=True, index=True),

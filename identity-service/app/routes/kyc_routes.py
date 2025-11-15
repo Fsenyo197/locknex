@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.kyc_schema import KYCVerificationCreate
 from app.services.kyc_service import KYCService
 from app.db import get_db
@@ -15,13 +15,13 @@ kyc_router = APIRouter(prefix="/users", tags=["Users"])
 # -------------------------
 @kyc_router.post("/me/kyc", response_model=dict, status_code=status.HTTP_201_CREATED)
 @permission_required("kyc:submit")
-def submit_kyc(
+async def submit_kyc(
     kyc_in: KYCVerificationCreate,
     request: Request,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    kyc = KYCService.submit_kyc(db, current_user, kyc_in)
+    kyc = await KYCService.submit_kyc(db, current_user, kyc_in, request=request)
     return {"detail": "KYC submitted successfully", "kyc_id": str(kyc.id)}
 
 
@@ -30,12 +30,16 @@ def submit_kyc(
 # -------------------------
 @kyc_router.get("/me/kyc/latest", response_model=dict)
 @permission_required("kyc:view")
-def get_latest_kyc(
+async def get_latest_kyc(
     request: Request,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    kyc = KYCService.get_latest_kyc(current_user)
+    kyc = await KYCService.get_latest_kyc(current_user, db, request=request)
     if not kyc:
         raise HTTPException(status_code=404, detail="No KYC record found")
-    return {"kyc_id": str(kyc.id), "status": kyc.status.value, "submitted_at": kyc.date_created}
+    return {
+        "kyc_id": str(kyc.id),
+        "status": kyc.status.value,
+        "submitted_at": kyc.date_created,
+    }

@@ -3,10 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import Column, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base
-
-
-# --- Declarative base ---
-Base = declarative_base()
+from app.db import Base
 
 # --- Common base model with UUID PK and UTC timestamps ---
 class BaseModel(Base):

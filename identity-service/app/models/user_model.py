@@ -33,9 +33,9 @@ class User(BaseModel):
         "KYCVerification",
         back_populates="user",
         cascade="all, delete-orphan",
-        lazy="joined"
+        lazy="selectin"
     )
-    permissions = relationship("Permission", secondary="user_permissions", back_populates="users")
     api_keys = relationship("APIKey", back_populates="user")
     sessions = relationship("Session", back_populates="user")
     activity_logs = relationship("ActivityLog", back_populates="user", cascade="all, delete-orphan")
+    staff_profile = relationship("Staff", back_populates="user", uselist=False)

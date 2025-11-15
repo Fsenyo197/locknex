@@ -9,12 +9,12 @@ class APIKey(BaseModel):
 
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
     key_hash = Column(String(255), nullable=False, index=True)
-    secret = Column(String(128), nullable=False, index=True)               
+    secret = Column(String(128), nullable=False, index=True)
     is_active = Column(Boolean, default=True, index=True)
     expires_at = Column(DateTime, nullable=True, index=True)
 
     user = relationship("User", back_populates="api_keys")
-    permissions = relationship("Permission", secondary="api_key_permissions") 
+    permissions = relationship("Permission", secondary="api_key_permissions")
 
 
 api_key_permissions = Table(

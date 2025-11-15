@@ -1,4 +1,6 @@
-from sqlalchemy.orm import Session
+from typing import Optional, cast, Any
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from fastapi import HTTPException, status, Request
 from uuid import UUID
 from app.models.staff_model import Staff, StaffRole, Department
@@ -7,22 +9,63 @@ from app.services.restriction_service import RestrictionService
 from app.utils.activity_logger import log_activity
 
 
-def create_staff(db: Session, staff_data: StaffCreate, actor: Staff = None, request: Request = None):
+# ---------------- CREATE STAFF ---------------- #
+async def create_staff(
+    db: AsyncSession,
+    staff_data: StaffCreate,
+    actor: Optional[Staff] = None,
+    request: Optional[Request] = None
+):
     try:
-        # Ensure superuser uniqueness
-        RestrictionService.ensure_single_superuser(db, staff_data.role, staff_data.department)
+        model_role = None
+        model_department = None
+
+        if getattr(staff_data, "role", None) is not None:
+            try:
+                model_role = StaffRole[staff_data.role.name]
+            except Exception:
+                model_role = StaffRole(
+                    staff_data.role.value if hasattr(staff_data.role, "value") else staff_data.role
+                )
+
+        if getattr(staff_data, "department", None) is not None:
+            try:
+                model_department = Department[staff_data.department.name]
+            except Exception:
+                model_department = Department(
+                    staff_data.department.value if hasattr(staff_data.department, "value") else staff_data.department
+                )
+
+        # ✅ await restriction check
+        await RestrictionService.ensure_single_superuser(
+            db,
+            cast(StaffRole, model_role),
+            cast(Department, model_department)
+        )
+
+        dept_value = (
+            staff_data.department.value
+            if getattr(staff_data, "department", None) and hasattr(staff_data.department, "value")
+            else staff_data.department
+        )
+        role_value = (
+            staff_data.role.value
+            if getattr(staff_data, "role", None) and hasattr(staff_data.role, "value")
+            else staff_data.role
+        )
 
         new_staff = Staff(
             user_id=staff_data.user_id,
-            department=staff_data.department,
-            role=staff_data.role,
+            department=dept_value,
+            role=role_value,
             permissions=staff_data.permissions,
         )
-        db.add(new_staff)
-        db.commit()
-        db.refresh(new_staff)
 
-        log_activity(
+        db.add(new_staff)
+        await db.commit()
+        await db.refresh(new_staff)
+
+        await log_activity(
             db,
             target_user=new_staff.user,
             activity_type="create_staff_success",
@@ -32,10 +75,11 @@ def create_staff(db: Session, staff_data: StaffCreate, actor: Staff = None, requ
         )
 
         return new_staff
+
     except HTTPException:
         raise
     except Exception as e:
-        log_activity(
+        await log_activity(
             db,
             target_user=actor.user if actor else None,
             activity_type="create_staff_error",
@@ -46,10 +90,17 @@ def create_staff(db: Session, staff_data: StaffCreate, actor: Staff = None, requ
         raise
 
 
-def get_staff(db: Session, staff_id: UUID, actor: Staff = None, request: Request = None):
-    staff = db.query(Staff).filter(Staff.id == staff_id).first()
+# ---------------- GET STAFF ---------------- #
+async def get_staff(
+    db: AsyncSession,
+    staff_id: UUID,
+    actor: Optional[Staff] = None,
+    request: Optional[Request] = None
+):
+    result = await db.execute(select(Staff).filter(Staff.id == staff_id))
+    staff = result.scalars().first()
     if not staff:
-        log_activity(
+        await log_activity(
             db,
             target_user=actor.user if actor else None,
             activity_type="get_staff_failed",
@@ -60,9 +111,9 @@ def get_staff(db: Session, staff_id: UUID, actor: Staff = None, request: Request
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Staff not found")
 
     if actor:
-        RestrictionService.enforce(actor, staff, action="view")
+        await RestrictionService.enforce(actor, staff, action="view")
 
-    log_activity(
+    await log_activity(
         db,
         target_user=staff.user,
         activity_type="get_staff_success",
@@ -74,10 +125,18 @@ def get_staff(db: Session, staff_id: UUID, actor: Staff = None, request: Request
     return staff
 
 
-def list_staff(db: Session, skip: int = 0, limit: int = 50, actor: Staff = None, request: Request = None):
-    staff_list = db.query(Staff).offset(skip).limit(limit).all()
+# ---------------- LIST STAFF ---------------- #
+async def list_staff(
+    db: AsyncSession,
+    skip: int = 0,
+    limit: int = 50,
+    actor: Optional[Staff] = None,
+    request: Optional[Request] = None
+):
+    result = await db.execute(select(Staff).offset(skip).limit(limit))
+    staff_list = result.scalars().all()
 
-    log_activity(
+    await log_activity(
         db,
         target_user=actor.user if actor else None,
         activity_type="list_staff",
@@ -89,34 +148,51 @@ def list_staff(db: Session, skip: int = 0, limit: int = 50, actor: Staff = None,
     return staff_list
 
 
-def update_staff(db: Session, staff_id: UUID, staff_data: StaffUpdate, actor: Staff, request: Request = None):
+# ---------------- UPDATE STAFF ---------------- #
+async def update_staff(
+    db: AsyncSession,
+    staff_id: UUID,
+    staff_data: StaffUpdate,
+    actor: Staff,
+    request: Optional[Request] = None
+):
     try:
-        staff = get_staff(db, staff_id, actor=actor, request=request)
+        staff = await get_staff(db, staff_id, actor=actor, request=request)
+        await RestrictionService.enforce(actor, staff, action="edit")
 
-        RestrictionService.enforce(actor, staff, action="edit")
-
-        if staff_data.role == StaffRole.SUPERUSER or staff_data.department == Department.SUPERUSER:
-            log_activity(
+        if (getattr(staff_data, "role", None) == StaffRole.SUPERUSER) or (
+            getattr(staff_data, "department", None) == Department.SUPERUSER
+        ):
+            await log_activity(
                 db,
                 target_user=actor.user,
                 activity_type="update_staff_denied",
                 request=request,
                 current_user=actor.user,
-                description="Attempt to update staff to SUPERUSER"
+                description="Attempt to assign SUPERUSER role/department denied"
             )
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot update staff to SUPERUSER")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot assign SUPERUSER role/department"
+            )
 
         if staff_data.department is not None:
-            staff.department = staff_data.department
+            dept_val = (
+                staff_data.department.value if hasattr(staff_data.department, "value") else staff_data.department
+            )
+            cast(Any, staff).department = str(dept_val) if dept_val is not None else None
+
         if staff_data.role is not None:
-            staff.role = staff_data.role
+            role_val = staff_data.role.value if hasattr(staff_data.role, "value") else staff_data.role
+            cast(Any, staff).role = str(role_val) if role_val is not None else None
+
         if staff_data.permissions is not None:
             staff.permissions = staff_data.permissions
 
-        db.commit()
-        db.refresh(staff)
+        await db.commit()
+        await db.refresh(staff)
 
-        log_activity(
+        await log_activity(
             db,
             target_user=staff.user,
             activity_type="update_staff_success",
@@ -126,10 +202,11 @@ def update_staff(db: Session, staff_id: UUID, staff_data: StaffUpdate, actor: St
         )
 
         return staff
+
     except HTTPException:
         raise
     except Exception as e:
-        log_activity(
+        await log_activity(
             db,
             target_user=actor.user,
             activity_type="update_staff_error",
@@ -140,16 +217,21 @@ def update_staff(db: Session, staff_id: UUID, staff_data: StaffUpdate, actor: St
         raise
 
 
-def delete_staff(db: Session, staff_id: UUID, actor: Staff, request: Request = None):
+# ---------------- DELETE STAFF ---------------- #
+async def delete_staff(
+    db: AsyncSession,
+    staff_id: UUID,
+    actor: Staff,
+    request: Optional[Request] = None
+):
     try:
-        staff = get_staff(db, staff_id, actor=actor, request=request)
+        staff = await get_staff(db, staff_id, actor=actor, request=request)
+        await RestrictionService.enforce(actor, staff, action="delete")
 
-        RestrictionService.enforce(actor, staff, action="delete")
+        await db.delete(staff)
+        await db.commit()
 
-        db.delete(staff)
-        db.commit()
-
-        log_activity(
+        await log_activity(
             db,
             target_user=staff.user,
             activity_type="delete_staff_success",
@@ -159,10 +241,11 @@ def delete_staff(db: Session, staff_id: UUID, actor: Staff, request: Request = N
         )
 
         return {"message": "Staff deleted successfully"}
+
     except HTTPException:
         raise
     except Exception as e:
-        log_activity(
+        await log_activity(
             db,
             target_user=actor.user,
             activity_type="delete_staff_error",

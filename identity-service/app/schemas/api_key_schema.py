@@ -1,7 +1,8 @@
-from pydantic import BaseModel
+from __future__ import annotations
+from typing import Optional, List
 from uuid import UUID
 from datetime import datetime
-from typing import Optional, List
+from pydantic import BaseModel, ConfigDict, Field
 from app.schemas.permission_schema import PermissionResponse
 
 
@@ -14,20 +15,19 @@ class APIKeyBase(BaseModel):
 
 
 class APIKeyCreate(APIKeyBase):
-    permissions: Optional[List[UUID]] = [] 
+    permissions: Optional[List[UUID]] = None
 
 
 class APIKeyUpdate(BaseModel):
-    is_active: Optional[bool]
-    expires_at: Optional[datetime]
-    permissions: Optional[List[UUID]]
+    is_active: Optional[bool] = None
+    expires_at: Optional[datetime] = None
+    permissions: Optional[List[UUID]] = None
 
 
 class APIKeyResponse(APIKeyBase):
     id: UUID
     date_created: datetime
     date_updated: datetime
-    permissions: List[PermissionResponse] = []
+    permissions: List[PermissionResponse] = Field(default_factory=list)
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)

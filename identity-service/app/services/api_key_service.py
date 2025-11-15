@@ -1,4 +1,6 @@
-from sqlalchemy.orm import Session
+from typing import Optional, Any, List
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update, delete
 from fastapi import HTTPException, status
 from uuid import UUID
 from datetime import datetime, timezone
@@ -8,87 +10,158 @@ from app.schemas.api_key_schema import APIKeyCreate, APIKeyUpdate
 from app.utils.activity_logger import log_activity
 
 
-def create_api_key(db: Session, api_key_in: APIKeyCreate, actor=None, request=None) -> APIKey:
+# -------------------------------
+# CREATE API KEY
+# -------------------------------
+async def create_api_key(
+    db: AsyncSession,
+    user_id: UUID,
+    api_key_in: APIKeyCreate,
+    actor=None,
+    request=None,
+) -> APIKey:
     try:
         api_key = APIKey(
-            user_id=api_key_in.user_id,
+            user_id=user_id,
             key_hash=api_key_in.key_hash,
             secret=api_key_in.secret,
             is_active=api_key_in.is_active,
             expires_at=api_key_in.expires_at,
         )
 
+        # ✅ Attach permissions
         if api_key_in.permissions:
-            perms = db.query(Permission).filter(Permission.id.in_(api_key_in.permissions)).all()
+            result = await db.execute(
+                select(Permission).filter(Permission.id.in_(api_key_in.permissions))
+            )
+            perms = result.scalars().all()
             api_key.permissions = perms
 
         db.add(api_key)
-        db.commit()
-        db.refresh(api_key)
+        await db.commit()
+        await db.refresh(api_key)
 
-        log_activity(db, actor, "api_key_create_success", request=request,
-                     description=f"API key created for user_id={api_key_in.user_id}")
+        await log_activity(
+            db, actor, "api_key_create_success", request=request,
+            description=f"API key created for user_id={user_id}"
+        )
         return api_key
     except Exception as e:
-        log_activity(db, actor, "api_key_create_error", request=request, description=str(e))
+        await db.rollback()
+        await log_activity(db, actor, "api_key_create_error", request=request, description=str(e))
         raise
 
 
-def get_api_key(db: Session, api_key_id: UUID, actor=None, request=None) -> APIKey:
-    api_key = db.query(APIKey).filter(APIKey.id == api_key_id).first()
+# -------------------------------
+# GET SINGLE API KEY
+# -------------------------------
+async def get_api_key(
+    db: AsyncSession,
+    api_key_id: UUID,
+    actor=None,
+    request=None,
+) -> APIKey:
+    result = await db.execute(select(APIKey).filter(APIKey.id == api_key_id))
+    api_key = result.scalar_one_or_none()
+
     if not api_key:
-        log_activity(db, actor, "api_key_get_not_found", request=request,
-                     description=f"API key {api_key_id} not found")
+        await log_activity(
+            db, actor, "api_key_get_not_found", request=request,
+            description=f"API key {api_key_id} not found"
+        )
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API Key not found")
 
-    log_activity(db, actor, "api_key_get_success", request=request,
-                 description=f"API key {api_key_id} retrieved")
+    await log_activity(
+        db, actor, "api_key_get_success", request=request,
+        description=f"API key {api_key_id} retrieved"
+    )
     return api_key
 
 
-def list_api_keys(db: Session, user_id: UUID = None, actor=None, request=None) -> list[APIKey]:
-    query = db.query(APIKey)
+# -------------------------------
+# LIST API KEYS
+# -------------------------------
+async def list_api_keys(
+    db: AsyncSession,
+    user_id: Optional[UUID] = None,
+    actor=None,
+    request=None,
+) -> List[APIKey]:
+    stmt = select(APIKey)
     if user_id:
-        query = query.filter(APIKey.user_id == user_id)
-    results = query.all()
+        stmt = stmt.filter(APIKey.user_id == user_id)
 
-    log_activity(db, actor, "api_key_list", request=request,
-                 description=f"Listed API keys (user_id={user_id if user_id else 'all'})")
-    return results
+    result = await db.execute(stmt)
+    keys = list(result.scalars().all())
+
+    await log_activity(
+        db, actor, "api_key_list", request=request,
+        description=f"Listed API keys (user_id={user_id if user_id else 'all'})"
+    )
+    return keys
 
 
-def update_api_key(db: Session, api_key_id: UUID, api_key_in: APIKeyUpdate, actor=None, request=None) -> APIKey:
+# -------------------------------
+# UPDATE API KEY
+# -------------------------------
+async def update_api_key(
+    db: AsyncSession,
+    api_key_id: UUID,
+    api_key_in: APIKeyUpdate,
+    actor=None,
+    request=None,
+) -> APIKey:
     try:
-        api_key = get_api_key(db, api_key_id, actor=actor, request=request)
+        api_key = await get_api_key(db, api_key_id, actor=actor, request=request)
 
         if api_key_in.is_active is not None:
-            api_key.is_active = api_key_in.is_active
+            setattr(api_key, "is_active", api_key_in.is_active)
         if api_key_in.expires_at is not None:
-            api_key.expires_at = api_key_in.expires_at
+            setattr(api_key, "expires_at", api_key_in.expires_at)
+
+        # ✅ Update permissions
         if api_key_in.permissions is not None:
-            perms = db.query(Permission).filter(Permission.id.in_(api_key_in.permissions)).all()
+            result = await db.execute(
+                select(Permission).filter(Permission.id.in_(api_key_in.permissions))
+            )
+            perms = result.scalars().all()
             api_key.permissions = perms
 
-        api_key.date_updated = datetime.now(timezone.utc)
-        db.commit()
-        db.refresh(api_key)
+        # assign to the instance attribute using setattr to satisfy static type checkers
+        setattr(api_key, "date_updated", datetime.now(timezone.utc))
+        await db.commit()
+        await db.refresh(api_key)
 
-        log_activity(db, actor, "api_key_update_success", request=request,
-                     description=f"API key {api_key_id} updated")
+        await log_activity(
+            db, actor, "api_key_update_success", request=request,
+            description=f"API key {api_key_id} updated"
+        )
         return api_key
     except Exception as e:
-        log_activity(db, actor, "api_key_update_error", request=request, description=str(e))
+        await db.rollback()
+        await log_activity(db, actor, "api_key_update_error", request=request, description=str(e))
         raise
 
 
-def delete_api_key(db: Session, api_key_id: UUID, actor=None, request=None) -> None:
+# -------------------------------
+# DELETE API KEY
+# -------------------------------
+async def delete_api_key(
+    db: AsyncSession,
+    api_key_id: UUID,
+    actor=None,
+    request=None,
+) -> None:
     try:
-        api_key = get_api_key(db, api_key_id, actor=actor, request=request)
-        db.delete(api_key)
-        db.commit()
+        api_key = await get_api_key(db, api_key_id, actor=actor, request=request)
+        await db.delete(api_key)
+        await db.commit()
 
-        log_activity(db, actor, "api_key_delete_success", request=request,
-                     description=f"API key {api_key_id} deleted")
+        await log_activity(
+            db, actor, "api_key_delete_success", request=request,
+            description=f"API key {api_key_id} deleted"
+        )
     except Exception as e:
-        log_activity(db, actor, "api_key_delete_error", request=request, description=str(e))
+        await db.rollback()
+        await log_activity(db, actor, "api_key_delete_error", request=request, description=str(e))
         raise

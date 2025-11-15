@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from uuid import UUID
 from datetime import datetime
 from typing import Optional, List
@@ -30,14 +30,14 @@ class StaffBase(BaseModel):
 
 
 class StaffCreate(StaffBase):
-    user_id: UUID 
-    permissions: Optional[List[str]]
+    user_id: UUID
+    permissions: Optional[List[str]] = None
 
 
 class StaffUpdate(BaseModel):
-    department: Optional[Department]
-    role: Optional[StaffRole]
-    permissions: Optional[List[str]]
+    department: Optional[Department] = None
+    role: Optional[StaffRole] = None
+    permissions: Optional[List[str]] = None
 
 
 class StaffResponse(StaffBase):
@@ -47,5 +47,4 @@ class StaffResponse(StaffBase):
     date_updated: datetime
     permissions: List[PermissionResponse] = []
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
