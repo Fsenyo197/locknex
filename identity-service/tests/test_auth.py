@@ -97,7 +97,7 @@ async def test_logout_missing_refresh_token(async_client, test_user):
         headers={"Authorization": f"Bearer {tokens['access_token']}"},
     )
     assert res.status_code == 400
-    assert res.json()["detail"] == "Refresh token missing from headers"
+    assert res.json()["detail"] == "Missing X-Refresh-Token header"
 
 
 @pytest.mark.asyncio

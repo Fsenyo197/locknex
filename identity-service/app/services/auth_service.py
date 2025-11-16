@@ -1,11 +1,9 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional, cast
-from jose import jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from uuid import UUID
-
 from app.config import settings
 from app.models.user_model import User, UserStatus
 from app.schemas.session_schema import SessionCreate
@@ -132,7 +130,7 @@ class AuthService:
         if not refresh_token:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Refresh token missing",
+                detail="Refresh token missing from headers",
             )
 
         await SessionService.invalidate_session(
@@ -143,3 +141,4 @@ class AuthService:
         )
 
         return {"message": "Logged out successfully"}
+
