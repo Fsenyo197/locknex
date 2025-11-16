@@ -1,11 +1,16 @@
 from datetime import datetime, timedelta, timezone
-from jose import jwt
 from typing import Optional
+from jose import jwt
 from app.config import settings
+
 
 JWT_SECRET_KEY = settings.JWT_SECRET_KEY
 JWT_ALGORITHM = settings.JWT_ALGORITHM
 
+
+# ---------------------------------------------------
+# TOKEN GENERATION
+# ---------------------------------------------------
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()

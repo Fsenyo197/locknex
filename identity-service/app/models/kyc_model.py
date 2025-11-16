@@ -29,7 +29,7 @@ class KYCVerification(BaseModel):
     document_image_url = Column(String(500), nullable=True)
     selfie_image_url = Column(String(500), nullable=True)
     kyc_notes = Column(Text, nullable=True)
-    status = Column(Enum(KYCStatus), default=KYCStatus.PENDING, index=True)
+    status = Column(Enum(KYCStatus, values_callable=lambda x: [e.value for e in x]), default=KYCStatus.PENDING, index=True)
 
     # Relationship
     user = relationship("User", back_populates="kyc_verifications")

@@ -45,8 +45,10 @@ class SessionService:
                 session_data["user_id"], "user_id"
             )
 
-            # refresh_token stays a STRING (Option A)
-            # no UUID validation
+            # Normalize expires_at timezone
+            expires_at = session_data.get("expires_at")
+            if expires_at is not None and expires_at.tzinfo is None:
+                session_data["expires_at"] = expires_at.replace(tzinfo=timezone.utc)
 
             session = UserSession(**session_data)
 
@@ -149,8 +151,22 @@ class SessionService:
                 detail="Invalid or expired refresh token",
             )
 
-        expires_at = cast(datetime, session.expires_at)
-        if expires_at < datetime.now(timezone.utc):
+        # ----------------------
+        # FIXED TZ HANDLING
+        # ----------------------
+        expires_at = session.expires_at
+
+        # Ensure static type is datetime for type checkers and handle naive tz
+        expires_at_dt = cast(datetime, expires_at)
+
+        # If DB datetime is naive, attach UTC
+        if getattr(expires_at_dt, "tzinfo", None) is None:
+            expires_at_dt = expires_at_dt.replace(tzinfo=timezone.utc)
+
+        now = datetime.now(timezone.utc)
+
+        # Expired
+        if expires_at_dt < now:
             await log_activity(
                 db, actor, "session_validate_failed", request=request,
                 description=f"Expired refresh token for user_id={user_uuid}"

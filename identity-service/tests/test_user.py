@@ -1,7 +1,10 @@
 import uuid
 import pytest
 from fastapi import status
-from app.services.user_service import hash_password, verify_password
+from app.utils.password import hash_password, verify_password
+from app.services.auth_service import AuthService
+from fastapi import HTTPException
+from app.models.user_model import User
 
 
 # =====================================================================
@@ -14,6 +17,7 @@ async def test_create_user_success(async_client):
         "email": "john@example.com",
         "phone_number": "123456789",
         "password": "password123",
+
     }
     response = await async_client.post("/users/", json=payload)
     assert response.status_code == status.HTTP_201_CREATED
@@ -210,10 +214,6 @@ async def test_create_user_invalid_email(async_client):
 # =====================================================================
 @pytest.mark.asyncio
 async def test_authenticate_user_invalid_credentials(db_session):
-    from fastapi import HTTPException
-    from app.models.user_model import User
-    from app.services.user_service import UserService
-
     user = User(
         username="auth_user",
         email="auth@example.com",
@@ -224,7 +224,7 @@ async def test_authenticate_user_invalid_credentials(db_session):
     await db_session.commit()
 
     with pytest.raises(HTTPException) as exc:
-        await UserService.authenticate_user(
+        await AuthService.authenticate_user(
             db_session, "auth@example.com", "wrongpass"
         )
 

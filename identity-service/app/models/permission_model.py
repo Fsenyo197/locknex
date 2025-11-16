@@ -7,7 +7,6 @@ class Permission(BaseModel):
     __tablename__ = "permissions"
 
     name = Column(String(100), unique=True, nullable=False, index=True)
-
     staffs = relationship("Staff", secondary="staff_permissions", back_populates="permissions")
 
 

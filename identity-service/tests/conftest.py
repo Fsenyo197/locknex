@@ -14,6 +14,7 @@ from app.main import app
 from app.db import Base, get_db
 from app.models.user_model import User
 from app.models.session_model import Session as UserSession
+from app.utils.current_user import get_current_user
 
 
 # -------------------------------------------------------------------
@@ -130,13 +131,12 @@ def mock_current_user(monkeypatch, test_user):
     """
     If routes depend on `current_user`, this overrides it with the test user.
     """
-    from app.dependencies.auth import get_current_user
 
     async def fake_current_user():
         return test_user
 
     monkeypatch.setattr(
-        "app.dependencies.auth.get_current_user",
+        "app.utils.current_user.get_current_user",
         fake_current_user
     )
 

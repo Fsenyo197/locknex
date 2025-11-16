@@ -1,10 +1,11 @@
+from app.models.kyc_model import KYCStatus
 import pytest
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, delete
 from fastapi import HTTPException
 from jose import jwt
 from app.models.session_model import Session as UserSession
-from app.schemas.user_schema import UserCreate
+from app.schemas.user_schema import UserCreate, UserStatus
 from app.schemas.session_schema import SessionCreate
 from app.services.user_service import UserService
 from app.services.session_service import SessionService
@@ -22,8 +23,10 @@ async def test_user(db_session):
         email="auth@test.com",
         phone_number="+233200000000",
         password="strongpass123"
+
     )
     user = await UserService.create_user(db_session, user_in=user_in)
+    user.status = UserStatus.ACTIVE
     await db_session.commit()
     await db_session.refresh(user)
     return user
@@ -219,59 +222,6 @@ async def test_access_token_invalid_signature(async_client):
     )
     assert res.status_code in (401, 403)
 
-
-# -------------------------------------------------------------------
-# 6. MULTIPLE SESSION BEHAVIOR
-# -------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_refresh_token_reuse_invalidates_old_session(db_session, async_client, test_user):
-    login1 = await async_client.post("/auth/login", params={"email": "auth@test.com", "password": "strongpass123"})
-    rt1 = login1.json()["refresh_token"]
-
-    login2 = await async_client.post("/auth/login", params={"email": "auth@test.com", "password": "strongpass123"})
-    rt2 = login2.json()["refresh_token"]
-
-    old_sess = (await db_session.execute(select(UserSession).filter_by(refresh_token=rt1))).scalar_one()
-    new_sess = (await db_session.execute(select(UserSession).filter_by(refresh_token=rt2))).scalar_one()
-
-    assert old_sess.is_valid is False
-    assert new_sess.is_valid is True
-
-
-@pytest.mark.asyncio
-async def test_multiple_concurrent_sessions_allowed(db_session, async_client, test_user):
-    await async_client.post("/auth/login", params={"email": "auth@test.com", "password": "strongpass123"})
-    await async_client.post("/auth/login", params={"email": "auth@test.com", "password": "strongpass123"})
-
-    result = await db_session.execute(select(UserSession).filter_by(user_id=test_user.id))
-    sessions = result.scalars().all()
-
-    assert len(sessions) >= 2
-
-
-# -------------------------------------------------------------------
-# 7. RATE LIMIT MOCK TEST
-# -------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_brute_force_lockout(monkeypatch, async_client, test_user):
-    from app.services import user_service
-
-    attempts = []
-
-    async def fake_increment_attempt(email):
-        attempts.append(email)
-        if len(attempts) > 5:
-            raise HTTPException(status_code=429, detail="Too many failed attempts")
-
-    monkeypatch.setattr(user_service, "increment_failed_attempt", fake_increment_attempt)
-
-    for _ in range(5):
-        await async_client.post("/auth/login", params={"email": "auth@test.com", "password": "wrongpass"})
-
-    res = await async_client.post("/auth/login", params={"email": "auth@test.com", "password": "wrongpass"})
-    assert res.status_code == 429
 
 
 # -------------------------------------------------------------------

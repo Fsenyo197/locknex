@@ -1,56 +1,16 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from fastapi import HTTPException, status
-from app.models.user_model import User, UserStatus
+from app.models.user_model import User
 from app.schemas.user_schema import UserCreate, UserUpdate
 from app.utils.activity_logger import log_activity
-from passlib.context import CryptContext
-from typing import Optional, cast, List
+from typing import Optional
 from uuid import UUID
-
-
-pwd_context = CryptContext(
-    schemes=["argon2"],
-    deprecated="auto",
-    argon2__type="ID",
-    argon2__memory_cost=32768,  # 32 MB
-    argon2__parallelism=4,
-    argon2__time_cost=2,
-)
-
-pwd_context = CryptContext(
-    schemes=["argon2"],
-    deprecated="auto"
-)
-
-def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
-
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+from app.utils.password import hash_password
+from typing import List
 
 
 class UserService:
-    # -------------------------
-    # Authentication
-    # -------------------------
-    @staticmethod
-    async def authenticate_user(db: AsyncSession, email: str, password: str, request=None) -> User:
-        result = await db.execute(select(User).where(User.email == email))
-        user = result.scalar_one_or_none()
-
-        if not user or not verify_password(password, cast(str, user.hashed_password)):
-            await log_activity(db, None, "login_failed", request=request, description=f"Failed login for {email}")
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-
-        if cast(UserStatus, user.status) == UserStatus.SUSPENDED:
-            await log_activity(db, user, "login_blocked", request=request, description="Account suspended")
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account suspended")
-
-        await log_activity(db, user, "login_success", request=request, description=f"User {email} logged in")
-        return user
-
     # -------------------------
     # Create
     # -------------------------

@@ -28,8 +28,8 @@ class Staff(BaseModel):
     __tablename__ = "staffs"
 
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    department = Column(Enum(Department), nullable=False, default=Department.GENERAL, index=True)
-    role = Column(Enum(StaffRole), nullable=False, default=StaffRole.GENERAL, index=True)
+    department = Column(Enum(Department, values_callable=lambda x: [e.value for e in x]), nullable=False, default=Department.GENERAL, index=True)
+    role = Column(Enum(StaffRole, values_callable=lambda x: [e.value for e in x]), nullable=False, default=StaffRole.GENERAL, index=True)
 
     # --- Relationships ---
     permissions = relationship("Permission", secondary="staff_permissions", back_populates="staffs")

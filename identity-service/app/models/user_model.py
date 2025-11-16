@@ -21,7 +21,7 @@ class User(BaseModel):
     hashed_password = Column(String(255), nullable=False)
     is_verified = Column(Boolean, default=False, index=True)
     is_superuser = Column(Boolean, default=False, nullable=False, index=True)
-    status = Column(Enum(UserStatus), default=UserStatus.PENDING_KYC, index=True)
+    status = Column(Enum(UserStatus, values_callable=lambda x: [e.value for e in x]), default=UserStatus.PENDING_KYC, index=True)
     twofa_secret = Column(String(64), nullable=True)
 
     __table_args__ = (
