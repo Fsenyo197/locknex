@@ -9,21 +9,18 @@ from sqlalchemy.ext.asyncio import (
     AsyncSession,
 )
 from sqlalchemy import delete
-from sqlalchemy.orm import sessionmaker
 from app.main import app
 from app.db import Base, get_db
-from app.models.user_model import User
+from app.models.user_model import User, UserStatus
 from app.models.session_model import Session as UserSession
 from app.utils.current_user import get_current_user
 
 
-# -------------------------------------------------------------------
-# GLOBAL TEST ENGINE (Async SQLite in-memory or your test PostgreSQL)
-# -------------------------------------------------------------------
+# =====================================================================
+# TEST DATABASE CONFIGURATION
+# =====================================================================
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
-# If you're using asyncpg for tests:
-# TEST_DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost/test_db"
 
 engine_test = create_async_engine(
     TEST_DATABASE_URL,
@@ -32,16 +29,16 @@ engine_test = create_async_engine(
 )
 
 TestingSessionLocal = async_sessionmaker(
-    autocommit=False,
-    autoflush=False,
     bind=engine_test,
     expire_on_commit=False,
+    autoflush=False,
+    autocommit=False,
 )
 
 
-# -------------------------------------------------------------------
-# OVERRIDE get_db
-# -------------------------------------------------------------------
+# =====================================================================
+# OVERRIDE get_db FOR TESTING
+# =====================================================================
 
 async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
     async with TestingSessionLocal() as session:
@@ -50,28 +47,30 @@ async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
 app.dependency_overrides[get_db] = override_get_db
 
 
-# -------------------------------------------------------------------
-# DATABASE SETUP + TEARDOWN
-# -------------------------------------------------------------------
+# =====================================================================
+# CREATE/DROP TABLES ONCE PER TEST SESSION
+# =====================================================================
 
 @pytest.fixture(scope="session")
 async def test_engine():
-    """Create all tables at the start of the test session."""
     async with engine_test.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
     yield engine_test
+
     async with engine_test.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
 
+# =====================================================================
+# DB SESSION FIXTURE – CLEAN FOR EACH TEST
+# =====================================================================
+
 @pytest.fixture(scope="function")
 async def db_session(test_engine):
-    """
-    Creates a clean DB session per test function.
-    Automatically rolls back & cleans up after test.
-    """
     async with TestingSessionLocal() as session:
-        # Clean sessions and users before each test
+
+        # CLEAN TABLES BEFORE EACH TEST
         await session.execute(delete(UserSession))
         await session.execute(delete(User))
         await session.commit()
@@ -79,79 +78,71 @@ async def db_session(test_engine):
         yield session
 
         await session.rollback()
-        await session.close()
 
 
-# -------------------------------------------------------------------
-# ASYNC TEST CLIENT FIXTURE
-# -------------------------------------------------------------------
+# =====================================================================
+# ASYNC HTTP CLIENT
+# =====================================================================
 
 @pytest.fixture
 async def async_client():
-    """Async httpx client for FastAPI."""
     transport = ASGITransport(app=app)
     async with AsyncClient(
         transport=transport,
-        base_url="http://testserver",
+        base_url="http://testserver"
     ) as client:
         yield client
 
 
-# -------------------------------------------------------------------
-# TEST USER FACTORY
-# -------------------------------------------------------------------
+# =====================================================================
+# TEST USER FIXTURE
+# =====================================================================
 
 @pytest.fixture
 async def test_user(db_session: AsyncSession):
     """
-    Inserts a test user into the database and returns it.
-    Matches the expected fields of your real User model.
+    Creates a real user in the DB.
     """
-    new_user = User(
-        id=str(uuid.uuid4()),
+    user = User(
+        id=uuid.uuid4(),
         email="auth@test.com",
-        password="$2b$12$T6uCo0P0RgxNPlZ1htD7zePQWj5nGdI72VrT7x7GgVxS0FvC5bAlu",  # bcrypt for "strongpass123"
-        is_active=True,
-        is_verified=True,
+        username="testuser",
+        phone_number="123456789",
+        hashed_password="$2b$12$T6uCo0P0RgxNPlZ1htD7zePQWj5nGdI72VrT7x7GgVxS0FvC5bAlu",
+        is_verified=False,
+        status=UserStatus.PENDING_KYC,
+        twofa_secret=None,
     )
 
-    db_session.add(new_user)
+    db_session.add(user)
     await db_session.commit()
-    await db_session.refresh(new_user)
+    await db_session.refresh(user)
+    return user
 
-    return new_user
 
-
-# -------------------------------------------------------------------
-# OPTIONAL: MOCK CURRENT USER (only if needed)
-# -------------------------------------------------------------------
+# =====================================================================
+# AUTHENTICATION OVERRIDE FOR API TESTS
+# =====================================================================
 
 @pytest.fixture
-def mock_current_user(monkeypatch, test_user):
+async def auth_override(test_user):
     """
-    If routes depend on `current_user`, this overrides it with the test user.
+    Proper FastAPI dependency override for API endpoints that require authentication.
     """
-
-    async def fake_current_user():
+    async def fake_user():
         return test_user
 
-    monkeypatch.setattr(
-        "app.utils.current_user.get_current_user",
-        fake_current_user
-    )
-
-    return test_user
+    app.dependency_overrides[get_current_user] = fake_user
+    yield
+    app.dependency_overrides.pop(get_current_user, None)
 
 
-# -------------------------------------------------------------------
-# EVENT LOOP FIX (REQUIRED FOR WINDOWS/WSL)
-# -------------------------------------------------------------------
+# =====================================================================
+# EVENT LOOP FOR ASYNC TESTS
+# =====================================================================
 
 @pytest.fixture(scope="session")
 def event_loop():
-    """
-    Create an event loop for pytest-asyncio on Windows/WSL.
-    """
     loop = asyncio.new_event_loop()
     yield loop
     loop.close()

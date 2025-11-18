@@ -15,10 +15,10 @@ user_router = APIRouter(prefix="/users", tags=["Users"])
 # -------------------------
 @user_router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def create_user(
+    request : Request,
     user_in: UserCreate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(get_current_user),
-    request = Request,
+    current_user=Depends(get_current_user)
 ):
     return await UserService.create_user(
         db, user_in, current_user=current_user, request=request
@@ -30,10 +30,10 @@ async def create_user(
 # -------------------------
 @user_router.get("/{user_id}", response_model=UserResponse)
 async def get_user(
+    request : Request,
     user_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
-    request = Request,
 ):
     return await UserService.get_user_by_id(
         db, user_id, current_user=current_user, request=request
@@ -45,11 +45,11 @@ async def get_user(
 # -------------------------
 @user_router.get("/", response_model=List[UserResponse])
 async def list_users(
+    request : Request,
     skip: int = 0,
     limit: int = 100,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(get_current_user),
-    request = Request,
+    current_user=Depends(get_current_user)
 ):
     return await UserService.list_users(
         db, current_user=current_user, skip=skip, limit=limit, request=request
@@ -61,11 +61,11 @@ async def list_users(
 # -------------------------
 @user_router.put("/{user_id}", response_model=UserResponse)
 async def update_user(
+    request : Request,
     user_id: UUID,
     user_in: UserUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(get_current_user),
-    request = Request,
+    current_user=Depends(get_current_user)
 ):
     user = await UserService.get_user_by_id(
         db, user_id, current_user=current_user, request=request
@@ -80,10 +80,10 @@ async def update_user(
 # -------------------------
 @user_router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(
+    request : Request,
     user_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(get_current_user),
-    request = Request,
+    current_user=Depends(get_current_user)
 ):
     user = await UserService.get_user_by_id(
         db, user_id, current_user=current_user, request=request

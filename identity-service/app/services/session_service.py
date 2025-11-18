@@ -61,7 +61,7 @@ class SessionService:
                 description=f"Session created for user_id={session.user_id}"
             )
 
-            return SessionResponse.from_orm(session)
+            return SessionResponse.model_validate(session)
 
         except Exception as e:
             await db.rollback()

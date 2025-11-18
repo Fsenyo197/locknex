@@ -14,11 +14,17 @@ async def log_activity(
     request: Optional[Request] = None,
     current_user: Optional[User] = None,
     **kwargs,
-) -> ActivityLog:
+) -> Optional[ActivityLog]:
     """
     Logs a user activity into the ActivityLog table.
-    Restrictions (e.g., superuser logs) are enforced centrally via RestrictionService.
+    If no current_user is provided, logging is skipped completely.
     """
+
+    # ---------------------------------------------
+    # 🚨 SKIP LOGGING ENTIRELY IF NO CURRENT USER
+    # ---------------------------------------------
+    if current_user is None:
+        return None
 
     # Enforce restrictions (only if both users provided)
     if current_user and target_user:
@@ -37,7 +43,7 @@ async def log_activity(
 
     # Create log entry
     log = ActivityLog(
-        user_id=current_user.id if current_user else None,
+        user_id=current_user.id,
         activity_type=activity_type,
         ip_address=ip_address,
         user_agent=user_agent,
@@ -46,9 +52,9 @@ async def log_activity(
 
     try:
         db.add(log)
-        await db.commit()       # ✅ async commit
-        await db.refresh(log)   # ✅ async refresh
+        await db.commit()
+        await db.refresh(log)
         return log
     except SQLAlchemyError as e:
-        await db.rollback()     # ✅ async rollback
+        await db.rollback()
         raise e

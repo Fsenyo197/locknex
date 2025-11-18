@@ -36,13 +36,6 @@ class Staff(BaseModel):
     user = relationship("User", back_populates="staff_profile")
 
     __table_args__ = (
-        # Only one staff can ever have role=superuser
-        Index(
-            "uq_staff_superuser_role",
-            "role",
-            unique=True,
-            postgresql_where=(role == StaffRole.SUPERUSER)
-        ),
         # Only one staff can ever have department=superuser
         Index(
             "uq_staff_superuser_department",

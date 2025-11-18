@@ -29,7 +29,6 @@ class UserBase(BaseModel):
     email: EmailStr
     phone_number: str
     is_verified: bool = False
-    is_staff: bool = False
     status: UserStatus = UserStatus.PENDING_KYC
 
 

@@ -4,65 +4,81 @@ from fastapi import HTTPException, status
 from app.models.user_model import User
 from app.schemas.user_schema import UserCreate, UserUpdate
 from app.utils.activity_logger import log_activity
-from typing import Optional
+from typing import Optional, List
 from uuid import UUID
 from app.utils.password import hash_password
-from typing import List
 
 
 class UserService:
-    # -------------------------
-    # Create
-    # -------------------------
-    @staticmethod
-    async def create_user(db: AsyncSession, user_in: UserCreate, current_user: Optional[User] = None, request=None) -> User:
-        try:
-            if getattr(user_in, "is_superuser", False):
-                await log_activity(db, current_user, "create_user_denied", request=request, description="Attempt to create superuser")
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot create another superuser")
 
+    # ---------------------------------------------------
+    # CREATE USER
+    # ---------------------------------------------------
+    @staticmethod
+    async def create_user(
+        db: AsyncSession,
+        user_in: UserCreate,
+        current_user: Optional[User] = None,
+        request=None
+    ) -> User:
+        try:
             # Username check
             result = await db.execute(select(User).where(User.username == user_in.username))
             if result.scalar_one_or_none():
-                await log_activity(db, current_user, "create_user_failed", request=request, description=f"Username {user_in.username} taken")
+                await log_activity(db, current_user, "create_user_failed", request=request,
+                                   description=f"Username {user_in.username} taken")
                 raise HTTPException(status_code=400, detail="Username already taken")
 
             # Email check
             result = await db.execute(select(User).where(User.email == user_in.email))
             if result.scalar_one_or_none():
-                await log_activity(db, current_user, "create_user_failed", request=request, description=f"Email {user_in.email} registered")
+                await log_activity(db, current_user, "create_user_failed", request=request,
+                                   description=f"Email {user_in.email} registered")
                 raise HTTPException(status_code=400, detail="Email already registered")
+
+            # Hash password
+            hashed = hash_password(user_in.password)
 
             user = User(
                 username=user_in.username,
                 email=user_in.email,
                 phone_number=user_in.phone_number,
-                hashed_password=hash_password(user_in.password),
+                hashed_password=hashed,
             )
             db.add(user)
             await db.commit()
             await db.refresh(user)
 
-            await log_activity(db, user, "create_user_success", request=request,
-                               description=f"User {user.username} created by {current_user.username if current_user else 'system'}")
+            await log_activity(
+                db,
+                user,
+                "create_user_success",
+                request=request,
+                description=f"User {user.username} created by {current_user.username if current_user else 'system'}"
+            )
+
             return user
+
         except HTTPException:
             raise
         except Exception as e:
             await db.rollback()
-            await log_activity(db, current_user, "create_user_error", request=request, description=str(e))
+            await log_activity(db, current_user, "create_user_error",
+                               request=request, description=str(e))
             raise HTTPException(status_code=500, detail="Error creating user")
 
-    # -------------------------
-    # Update
-    # -------------------------
+    # ---------------------------------------------------
+    # UPDATE USER
+    # ---------------------------------------------------
     @staticmethod
-    async def update_user(db: AsyncSession, user: User, user_in: UserUpdate, current_user: User, request=None) -> User:
+    async def update_user(
+        db: AsyncSession,
+        user: User,
+        user_in: UserUpdate,
+        current_user: User,
+        request=None
+    ) -> User:
         try:
-            if user.is_superuser and user.id != current_user.id:
-                await log_activity(db, current_user, "update_user_denied", request=request, description="Attempt to edit superuser")
-                raise HTTPException(status_code=403, detail="Only the superuser can edit their own account")
-
             # Uniqueness checks
             if user_in.username and user_in.username != user.username:
                 result = await db.execute(select(User).where(User.username == user_in.username))
@@ -94,70 +110,98 @@ class UserService:
 
             await log_activity(db, current_user, "update_user_success", request=request,
                                description=f"User {user.username} updated by {current_user.username}")
+
             return user
+
         except HTTPException:
             raise
         except Exception as e:
             await db.rollback()
-            await log_activity(db, current_user, "update_user_error", request=request, description=str(e))
+            await log_activity(db, current_user, "update_user_error", request=request,
+                               description=str(e))
             raise HTTPException(status_code=500, detail="Error updating user")
 
-    # -------------------------
-    # Read (Get / List)
-    # -------------------------
+    # ---------------------------------------------------
+    # GET BY ID
+    # ---------------------------------------------------
     @staticmethod
-    async def get_user_by_id(db: AsyncSession, user_id: UUID, current_user: User, request=None) -> User:
+    async def get_user_by_id(
+        db: AsyncSession,
+        user_id: UUID,
+        current_user: User,
+        request=None
+    ) -> User:
         try:
             result = await db.execute(select(User).where(User.id == user_id))
             user = result.scalar_one_or_none()
-            if not user:
-                await log_activity(db, current_user, "get_user_failed", request=request, description=f"User {user_id} not found")
-                raise HTTPException(status_code=404, detail="User not found")
 
-            if user.is_superuser and user.id != current_user.id:
-                await log_activity(db, current_user, "get_user_denied", request=request, description=f"Attempt to view superuser {user_id}")
-                raise HTTPException(status_code=403, detail="Cannot view superuser")
+            if not user:
+                await log_activity(db, current_user, "get_user_failed", request=request,
+                                   description=f"User {user_id} not found")
+                raise HTTPException(status_code=404, detail="User not found")
 
             await log_activity(db, current_user, "get_user_success", request=request,
                                description=f"User {user.username} retrieved by {current_user.username}")
+
             return user
+
         except Exception as e:
             await db.rollback()
-            await log_activity(db, current_user, "get_user_error", request=request, description=str(e))
+            await log_activity(db, current_user, "get_user_error", request=request,
+                               description=str(e))
             raise HTTPException(status_code=500, detail="Error retrieving user")
 
+    # ---------------------------------------------------
+    # LIST USERS
+    # ---------------------------------------------------
     @staticmethod
-    async def list_users(db: AsyncSession, current_user: Optional[User] = None, skip: int = 0, limit: int = 100, request=None) -> List[User]:
+    async def list_users(
+        db: AsyncSession,
+        current_user: Optional[User] = None,
+        skip: int = 0,
+        limit: int = 100,
+        request=None
+    ) -> List[User]:
         try:
             result = await db.execute(
-                select(User).where(User.is_superuser == False).offset(skip).limit(limit)
+                select(User)
+                .offset(skip)
+                .limit(limit)
             )
             users = list(result.scalars().all())
+
             await log_activity(db, current_user, "list_users_success", request=request,
-                               description=f"{len(users)} users retrieved by {current_user.username if current_user else 'system'}")
+                               description=f"{len(users)} users retrieved")
+
             return users
+
         except Exception as e:
             await db.rollback()
-            await log_activity(db, current_user, "list_users_error", request=request, description=str(e))
+            await log_activity(db, current_user, "list_users_error", request=request,
+                               description=str(e))
             raise HTTPException(status_code=500, detail="Error retrieving users")
 
-    # -------------------------
-    # Delete
-    # -------------------------
+    # ---------------------------------------------------
+    # DELETE USER
+    # ---------------------------------------------------
     @staticmethod
-    async def delete_user(db: AsyncSession, user: User, current_user: User, request=None) -> None:
+    async def delete_user(
+        db: AsyncSession,
+        user: User,
+        current_user: User,
+        request=None
+    ) -> None:
         try:
-            if user.is_superuser and user.id != current_user.id:
-                raise HTTPException(status_code=403, detail="Superuser cannot be deleted by others")
-
             await db.delete(user)
             await db.commit()
 
-            await log_activity(db, user, "delete_user_success", request=request,
+            await log_activity(db, current_user, "delete_user_success", request=request,
                                description=f"User {user.username} deleted by {current_user.username}")
+
         except HTTPException:
             raise
         except Exception as e:
             await db.rollback()
-            await log_activity(db, current_user, "delete_user_error", request=request, description=str(e))
+            await log_activity(db, current_user, "delete_user_error", request=request,
+                               description=str(e))
             raise HTTPException(status_code=500, detail="Error deleting user")
